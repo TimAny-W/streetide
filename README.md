@@ -6,8 +6,6 @@ Click a corner. The streets that are actually reachable light up in waves — al
 
 ![Streetide demo](docs/demo.gif)
 
-> Drop a real `docs/demo.gif` after you click Berlin once (screen-record 8–12 seconds). Until then the README still explains the trick.
-
 ## Why this exists
 
 Isochrones are usually a blob. Cities are not blobs. A river, a rail yard, or a freeway **cuts** where you can walk, and that cut is the whole point.
