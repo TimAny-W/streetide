@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Streetide — watch a city flood with walking time</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --bg: #07080c;
+      --panel: rgba(12, 14, 22, 0.88);
+      --line: #1e2433;
+      --text: #e8ecf4;
+      --muted: #8b95a8;
+      --accent: #5ce1c5;
+    }
+    * { box-sizing: border-box; }
+    html, body, #map { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif; }
+    #map { z-index: 0; }
+    .hud {
+      position: absolute; z-index: 500; top: 16px; left: 16px; width: min(360px, calc(100vw - 32px));
+      background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+      padding: 16px 16px 14px; backdrop-filter: blur(12px);
+      box-shadow: 0 12px 40px rgba(0,0,0,.45);
+    }
+    h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: -0.02em; }
+    h1 span { color: var(--accent); }
+    .lede { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 0 0 14px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    button, select {
+      background: #141824; color: var(--text); border: 1px solid var(--line);
+      border-radius: 999px; padding: 7px 12px; font-size: 12px; cursor: pointer;
+    }
+    button.active, button:hover { border-color: var(--accent); color: var(--accent); }
+    .status { font-size: 12px; color: var(--muted); min-height: 16px; }
+    .legend { display: flex; gap: 10px; font-size: 11px; color: var(--muted); margin-top: 10px; }
+    .swatch { width: 10px; height: 10px; border-radius: 99px; display: inline-block; margin-right: 4px; }
+    .hint { position: absolute; z-index: 500; bottom: 18px; left: 50%; transform: translateX(-50%);
+      font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line);
+      padding: 6px 12px; border-radius: 999px; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <aside class="hud">
+    <h1>Street<span>ide</span></h1>
+    <p class="lede">Click the map. Real streets fill with the minutes it takes to walk them — not a circle.</p>
+    <div class="row">
+      <button data-city="nyc" type="button">Brooklyn</button>
+      <button data-city="berlin" type="button">Berlin</button>
+      <button data-city="lisbon" type="button">Lisbon</button>
+    </div>
+    <div class="row">
+      <button id="walk" class="active" type="button">Walk</button>
+      <button id="bike" type="button">Bike</button>
+      <select id="minutes">
+        <option value="8">8 min</option>
+        <option value="15" selected>15 min</option>
+        <option value="20">20 min</option>
+      </select>
+    </div>
+    <div class="status" id="status">Click anywhere — first fetch downloads OpenStreetMap (~10s).</div>
+    <div class="legend">
+      <span><i class="swatch" style="background:#5ce1c5"></i>early</span>
+      <span><i class="swatch" style="background:#f0c14a"></i>mid</span>
+      <span><i class="swatch" style="background:#ff6b8a"></i>edge</span>
+    </div>
+  </aside>
+  <div class="hint">Click a street corner · tide animates by travel time</div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const CITIES = {
+      nyc: [40.6782, -73.9442],
+      berlin: [52.5200, 13.4050],
+      lisbon: [38.7223, -9.1393],
+    };
+    const map = L.map("map", { zoomControl: false }).setView(CITIES.berlin, 15);
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: "&copy; OSM &copy; CARTO", maxZoom: 19,
+    }).addTo(map);
+
+    let mode = "walk";
+    let layer = L.layerGroup().addTo(map);
+    let originMarker = null;
+    const status = document.getElementById("status");
+
+    document.getElementById("walk").onclick = () => { mode = "walk"; setActive("walk"); };
+    document.getElementById("bike").onclick = () => { mode = "bike"; setActive("bike"); };
+    function setActive(id) {
+      document.getElementById("walk").classList.toggle("active", id === "walk");
+      document.getElementById("bike").classList.toggle("active", id === "bike");
+    }
+    document.querySelectorAll("[data-city]").forEach((btn) => {
+      btn.onclick = () => map.setView(CITIES[btn.dataset.city], 15);
+    });
+
+    function colorFor(t, maxT) {
+      const x = t / maxT;
+      if (x < 0.33) return "#5ce1c5";
+      if (x < 0.66) return "#f0c14a";
+      return "#ff6b8a";
+    }
+
+    async function runTide(latlng) {
+      const minutes = Number(document.getElementById("minutes").value);
+      status.textContent = "Downloading streets and flooding the graph…";
+      layer.clearLayers();
+      if (originMarker) originMarker.remove();
+      originMarker = L.circleMarker(latlng, {
+        radius: 7, color: "#fff", weight: 2, fillColor: "#5ce1c5", fillOpacity: 1,
+      }).addTo(map);
+      try {
+        const res = await fetch("/api/tide", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: latlng.lat, lng: latlng.lng, minutes, mode }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "tide failed");
+        animate(data);
+      } catch (err) {
+        status.textContent = String(err.message || err);
+      }
+    }
+
+    function animate(data) {
+      const edges = data.edges;
+      const maxT = Math.max(1, data.minutes * 60);
+      status.textContent = `${edges.length} streets · ${data.mode} · ${data.minutes} min`;
+      const duration = 4200;
+      const t0 = performance.now();
+      const drawn = new Set();
+      function frame(now) {
+        const p = Math.min(1, (now - t0) / duration);
+        const cutoff = p * maxT;
+        for (let i = 0; i < edges.length; i++) {
+          if (drawn.has(i) || edges[i].t > cutoff) continue;
+          drawn.add(i);
+          const latlngs = edges[i].coords.map(([lng, lat]) => [lat, lng]);
+          L.polyline(latlngs, {
+            color: colorFor(edges[i].t, maxT),
+            weight: 2.4,
+            opacity: 0.85,
+          }).addTo(layer);
+        }
+        if (p < 1) requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    map.on("click", (e) => runTide(e.latlng));
+  </script>
+</body>
+</html>
