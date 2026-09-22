@@ -1,6 +1,7 @@
 """Streetide web app."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -11,6 +12,8 @@ from pydantic import BaseModel, Field
 from streetide.tide import flood
 
 STATIC = Path(__file__).parent / "static"
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+logging.getLogger("streetide").setLevel(logging.INFO)
 
 app = FastAPI(title="Streetide", version="0.1.0")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -35,9 +38,11 @@ def health():
 
 @app.post("/api/tide")
 def api_tide(body: TideRequest):
+    logging.getLogger("streetide").info("POST /api/tide %s %s min", body.mode, body.minutes)
     try:
         return flood(body.lat, body.lng, body.minutes, body.mode)
     except Exception as exc:
+        logging.getLogger("streetide").exception("tide failed")
         raise HTTPException(status_code=502, detail=f"Could not flood this spot: {exc}") from exc
 
 

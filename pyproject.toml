@@ -8,7 +8,6 @@ license = { text = "MIT" }
 dependencies = [
     "fastapi>=0.115.0",
     "networkx>=3.2",
-    "osmnx>=2.0.0",
     "uvicorn>=0.32.0",
 ]
 

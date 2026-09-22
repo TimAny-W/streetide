@@ -43,8 +43,9 @@ First request for a neighborhood can take ~10 seconds. After that the graph sits
 ## Stack
 
 - FastAPI + Leaflet (dark CARTO tiles)
-- OSMnx + NetworkX for the walk graph
+- NetworkX walk graph from the **OSM Map API** (`api.openstreetmap.org`, not Overpass)
 - Travel times: **1.4 m/s walk**, **4.5 m/s bike**
+- If OSM is blocked, a schematic grid still animates so the UI never dies
 
 No accounts, no tracking, no faces. Public map data only.
 
